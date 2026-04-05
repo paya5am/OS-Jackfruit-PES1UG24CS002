@@ -6,6 +6,10 @@
 #include <sys/mount.h>
 #include <sys/wait.h>
 #include <string.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <fcntl.h>
+#define SOCKET_PATH "/tmp/container_socket"
 #define MAX_CONTAINERS 10
 
 struct container {
@@ -70,27 +74,79 @@ pid_t start_container(char *id, char *rootfs) {
 
     return pid;
 }
-int main() {
-    printf("[Parent] Starting multiple containers...\n");
+int main(int argc, char *argv[]) {
 
-    start_container("alpha", "./rootfs-alpha");
-    start_container("beta", "./rootfs-beta");
-
-    // print metadata
-    printf("\nContainer List:\n");
-    printf("ID\tPID\tSTATE\n");
-
-    for (int i = 0; i < container_count; i++) {
-        printf("%s\t%d\t%s\n",
-            containers[i].id,
-            containers[i].pid,
-            containers[i].running ? "running" : "stopped");
+    if (argc < 2) {
+        printf("Usage:\n");
+        printf("  engine supervisor <rootfs>\n");
+        printf("  engine start <id> <rootfs> <cmd>\n");
+        return 1;
     }
 
-    // wait for containers
-    for (int i = 0; i < container_count; i++) {
-        waitpid(containers[i].pid, NULL, 0);
-        containers[i].running = 0;
+    // ---------------- SUPERVISOR ----------------
+    if (strcmp(argv[1], "supervisor") == 0) {
+
+        int server_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+        if (server_fd < 0) {
+            perror("socket");
+            return 1;
+        }
+
+        struct sockaddr_un addr;
+        addr.sun_family = AF_UNIX;
+        strcpy(addr.sun_path, SOCKET_PATH);
+
+        unlink(SOCKET_PATH);  // remove old socket
+
+        if (bind(server_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+            perror("bind");
+            return 1;
+        }
+
+        if (listen(server_fd, 5) < 0) {
+            perror("listen");
+            return 1;
+        }
+
+        printf("[Supervisor] Running...\n");
+
+        while (1) {
+            int client_fd = accept(server_fd, NULL, NULL);
+            if (client_fd < 0) {
+                perror("accept");
+                continue;
+            }
+
+            char buffer[256] = {0};
+            read(client_fd, buffer, sizeof(buffer));
+
+            printf("[Supervisor] Received: %s\n", buffer);
+
+            close(client_fd);
+        }
+    }
+
+    // ---------------- CLIENT ----------------
+    else if (strcmp(argv[1], "start") == 0) {
+
+        int sock = socket(AF_UNIX, SOCK_STREAM, 0);
+
+        struct sockaddr_un addr;
+        addr.sun_family = AF_UNIX;
+        strcpy(addr.sun_path, SOCKET_PATH);
+
+        if (connect(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+            perror("connect");
+            return 1;
+        }
+
+        char buffer[256];
+        snprintf(buffer, sizeof(buffer), "start %s %s %s",
+                 argv[2], argv[3], argv[4]);
+
+        write(sock, buffer, strlen(buffer));
+
+        close(sock);
     }
 
     return 0;
