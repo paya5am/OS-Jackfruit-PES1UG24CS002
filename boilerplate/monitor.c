@@ -65,6 +65,7 @@ struct proc_entry {
     pid_t pid;
     struct list_head list;
 };
+static int major;
 static LIST_HEAD(proc_list);       // head of linked list
 static DEFINE_MUTEX(proc_mutex);  // protects list
 /* ---------------------------------------------------------------
@@ -279,6 +280,14 @@ add_pid(1234);
 add_pid(5678);
 
 print_list();
+major = register_chrdev(0, DEVICE_NAME, &fops);
+
+if (major < 0) {
+    printk("Failed to register device\n");
+    return major;
+}
+
+printk("monitor: device registered\n");
 
     timer_setup(&monitor_timer, timer_callback, 0);
     mod_timer(&monitor_timer, jiffies + CHECK_INTERVAL_SEC * HZ);
@@ -316,6 +325,8 @@ list_for_each_entry_safe(entry, tmp, &proc_list, list) {
 }
 
 mutex_unlock(&proc_mutex);
+unregister_chrdev(major, DEVICE_NAME);
+printk("monitor: device unregistered\n");
 
 printk(KERN_INFO "Monitor module unloaded\n");
 
