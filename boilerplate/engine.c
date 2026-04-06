@@ -28,10 +28,8 @@ int child_func(void *arg) {
 
     printf("[Child] Starting container...\n");
 
-    // Set hostname (UTS namespace)
     sethostname("container", 9);
 
-    // Change root filesystem
     if (chroot(rootfs) != 0) {
         perror("chroot");
         return 1;
@@ -39,7 +37,6 @@ int child_func(void *arg) {
 
     chdir("/");
 
-    // Mount /proc inside container
     if (mount("proc", "/proc", "proc", 0, NULL) != 0) {
         perror("mount proc");
         return 1;
@@ -47,12 +44,12 @@ int child_func(void *arg) {
 
     printf("[Child] Inside container!\n");
 
-    // Run shell
     execl("/bin/sh", "/bin/sh", NULL);
 
     perror("execl");
     return 1;
 }
+
 pid_t start_container(char *id, char *rootfs) {
     int flags = CLONE_NEWUTS | CLONE_NEWPID | CLONE_NEWNS | SIGCHLD;
 
@@ -63,7 +60,6 @@ pid_t start_container(char *id, char *rootfs) {
         return -1;
     }
 
-    // store metadata
     strcpy(containers[container_count].id, id);
     containers[container_count].pid = pid;
     containers[container_count].running = 1;
@@ -74,6 +70,7 @@ pid_t start_container(char *id, char *rootfs) {
 
     return pid;
 }
+
 void list_containers() {
     printf("ID\tPID\tSTATE\n");
 
@@ -84,6 +81,7 @@ void list_containers() {
             containers[i].running ? "running" : "stopped");
     }
 }
+
 int main(int argc, char *argv[]) {
 
     if (argc < 2) {
@@ -106,7 +104,7 @@ int main(int argc, char *argv[]) {
         addr.sun_family = AF_UNIX;
         strcpy(addr.sun_path, SOCKET_PATH);
 
-        unlink(SOCKET_PATH);  // remove old socket
+        unlink(SOCKET_PATH);
 
         if (bind(server_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
             perror("bind");
@@ -132,23 +130,23 @@ int main(int argc, char *argv[]) {
 
             printf("[Supervisor] Received: %s\n", buffer);
 
-// -------- START COMMAND --------
-if (strncmp(buffer, "start", 5) == 0) {
+            // -------- START COMMAND --------
+            if (strncmp(buffer, "start", 5) == 0) {
 
-    char id[32], rootfs[128], cmd[128];
+                char id[32], rootfs[128], cmd[128];
 
-    sscanf(buffer, "start %s %s %s", id, rootfs, cmd);
+                sscanf(buffer, "start %s %s %s", id, rootfs, cmd);
 
-    printf("[Supervisor] Starting container %s...\n", id);
+                printf("[Supervisor] Starting container %s...\n", id);
 
-    start_container(id, rootfs);
-}
+                start_container(id, rootfs);
+            }
 
-// -------- PS COMMAND --------
-else if (strncmp(buffer, "ps", 2) == 0) {
-    printf("[Supervisor] Listing containers:\n");
-    list_containers();
-}
+            // -------- PS COMMAND --------
+            else if (strncmp(buffer, "ps", 2) == 0) {
+                printf("[Supervisor] Listing containers:\n");
+                list_containers();
+            }
 
             close(client_fd);
         }
@@ -167,29 +165,31 @@ else if (strncmp(buffer, "ps", 2) == 0) {
             perror("connect");
             return 1;
         }
-else if (strcmp(argv[1], "ps") == 0) {
-
-    int sock = socket(AF_UNIX, SOCK_STREAM, 0);
-
-    struct sockaddr_un addr;
-    addr.sun_family = AF_UNIX;
-    strcpy(addr.sun_path, SOCKET_PATH);
-
-    if (connect(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-        perror("connect");
-        return 1;
-    }
-
-    write(sock, "ps", 2);
-
-    close(sock);
-}
 
         char buffer[256];
         snprintf(buffer, sizeof(buffer), "start %s %s %s",
                  argv[2], argv[3], argv[4]);
 
         write(sock, buffer, strlen(buffer));
+
+        close(sock);
+    }
+
+    // -------- PS CLIENT --------
+    else if (strcmp(argv[1], "ps") == 0) {
+
+        int sock = socket(AF_UNIX, SOCK_STREAM, 0);
+
+        struct sockaddr_un addr;
+        addr.sun_family = AF_UNIX;
+        strcpy(addr.sun_path, SOCKET_PATH);
+
+        if (connect(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+            perror("connect");
+            return 1;
+        }
+
+        write(sock, "ps", 2);
 
         close(sock);
     }
