@@ -31,7 +31,7 @@
 #include <linux/mutex.h>    // for mutex
 
 #define DEVICE_NAME "container_monitor"
-#define CHECK_INTERVAL_SEC 1
+#define CHECK_INTERVAL_SEC 0
 
 /* ==============================================================
  * TODO 1: Define your linked-list node struct.
@@ -123,17 +123,22 @@ static void kill_process(const char *container_id,
                          unsigned long limit_bytes,
                          long rss_bytes)
 {
+    struct pid *pid_struct;
     struct task_struct *task;
-
-    rcu_read_lock();
-    task = pid_task(find_vpid(pid), PIDTYPE_PID);
-    if (task)
-        send_sig(SIGKILL, task, 1);
-    rcu_read_unlock();
+    pid_struct=find_get_pid(pid);
+    if(!pid_struct)
+    return;
+    task = get_pid_task(pid_struct, PIDTYPE_PID);
+    put_pid(pid_struct);
+    if (!task)
+        return;
 
     printk(KERN_WARNING
            "[container_monitor] HARD LIMIT container=%s pid=%d rss=%ld limit=%lu\n",
            container_id, pid, rss_bytes, limit_bytes);
+    kill_pid(task_pid(task),SIGKILL,1);
+    put_task_struct(task);
+
 }
 
 /* ---------------------------------------------------------------
@@ -152,7 +157,7 @@ static void timer_callback(struct timer_list *t)
      *   - avoid use-after-free while deleting during iteration
      * ============================================================== */
 
-    mod_timer(&monitor_timer, jiffies + CHECK_INTERVAL_SEC * HZ);
+    mod_timer(&monitor_timer, jiffies + HZ/10);
 }
 
 /* ---------------------------------------------------------------
