@@ -64,13 +64,14 @@ static long get_rss_bytes(pid_t pid)
         rss_pages = get_mm_rss(mm);
         mmput(mm);
     }
+
     put_task_struct(task);
 
     return rss_pages * PAGE_SIZE;
 }
 
 
-// ---------------- LOG ----------------
+// ---------------- SOFT LIMIT ----------------
 static void log_soft_limit_event(const char *container_id,
                                  pid_t pid,
                                  unsigned long limit_bytes,
@@ -82,7 +83,7 @@ static void log_soft_limit_event(const char *container_id,
 }
 
 
-// ---------------- KILL (FINAL FIX) ----------------
+// ---------------- HARD LIMIT ----------------
 static void kill_process(const char *container_id,
                          pid_t pid,
                          unsigned long limit_bytes,
@@ -96,7 +97,6 @@ static void kill_process(const char *container_id,
         rcu_read_unlock();
         return;
     }
-
     get_task_struct(task);
     rcu_read_unlock();
 
@@ -104,10 +104,10 @@ static void kill_process(const char *container_id,
            "[container_monitor] HARD LIMIT container=%s pid=%d rss=%ld limit=%lu\n",
            container_id, pid, rss_bytes, limit_bytes);
 
-    // 🔥 Kill the main process
+    // Kill main process
     send_sig(SIGKILL, task, 0);
 
-    // 🔥 ALSO kill all children (THIS IS THE REAL FIX)
+    // Kill children (best-effort)
     rcu_read_lock();
     list_for_each_entry(child, &task->children, sibling) {
         send_sig(SIGKILL, child, 0);
@@ -116,6 +116,7 @@ static void kill_process(const char *container_id,
 
     put_task_struct(task);
 }
+
 
 // ---------------- TIMER ----------------
 static void timer_callback(struct timer_list *t)
@@ -128,14 +129,18 @@ static void timer_callback(struct timer_list *t)
 
         long rss = get_rss_bytes(entry->pid);
 
-        // process exited
+        // Process exited → cleanup
         if (rss < 0) {
+            printk(KERN_INFO
+                   "[container_monitor] CLEANUP pid=%d\n",
+                   entry->pid);
+
             list_del(&entry->list);
             kfree(entry);
             continue;
         }
 
-        // soft limit
+        // Soft limit (trigger once)
         if (!entry->soft_triggered && rss > entry->soft_limit) {
             log_soft_limit_event(entry->container_id,
                                  entry->pid,
@@ -144,7 +149,7 @@ static void timer_callback(struct timer_list *t)
             entry->soft_triggered = 1;
         }
 
-        // hard limit
+        // Hard limit → kill + remove
         if (rss > entry->hard_limit) {
             kill_process(entry->container_id,
                          entry->pid,
@@ -159,17 +164,17 @@ static void timer_callback(struct timer_list *t)
 
     mutex_unlock(&monitor_lock);
 
-    mod_timer(&monitor_timer, jiffies + msecs_to_jiffies(CHECK_INTERVAL_MS));
+    mod_timer(&monitor_timer,
+              jiffies + msecs_to_jiffies(CHECK_INTERVAL_MS));
 }
 
 
 // ---------------- IOCTL ----------------
-static long monitor_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
+static long monitor_ioctl(struct file *f,
+                          unsigned int cmd,
+                          unsigned long arg)
 {
     struct monitor_request req;
-
-    if (cmd != MONITOR_REGISTER && cmd != MONITOR_UNREGISTER)
-        return -EINVAL;
 
     if (copy_from_user(&req, (void __user *)arg, sizeof(req)))
         return -EFAULT;
@@ -177,14 +182,25 @@ static long monitor_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
     // -------- REGISTER --------
     if (cmd == MONITOR_REGISTER) {
 
-        struct monitor_entry *entry;
+        struct monitor_entry *entry, *tmp;
+
+        mutex_lock(&monitor_lock);
+
+        // Prevent duplicate
+        list_for_each_entry(tmp, &monitor_list, list) {
+            if (tmp->pid == req.pid) {
+                mutex_unlock(&monitor_lock);
+                return -EEXIST;
+            }
+        }
 
         entry = kmalloc(sizeof(*entry), GFP_KERNEL);
-        if (!entry)
+        if (!entry) {
+            mutex_unlock(&monitor_lock);
             return -ENOMEM;
+        }
 
         entry->pid = req.pid;
-
         strncpy(entry->container_id, req.container_id, MONITOR_NAME_LEN - 1);
         entry->container_id[MONITOR_NAME_LEN - 1] = '\0';
 
@@ -192,12 +208,12 @@ static long monitor_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
         entry->hard_limit = req.hard_limit_bytes;
         entry->soft_triggered = 0;
 
-        mutex_lock(&monitor_lock);
         list_add(&entry->list, &monitor_list);
+
         mutex_unlock(&monitor_lock);
 
         printk(KERN_INFO
-               "[container_monitor] Registering container=%s pid=%d soft=%lu hard=%lu\n",
+               "[container_monitor] REGISTER container=%s pid=%d soft=%lu hard=%lu\n",
                entry->container_id,
                entry->pid,
                entry->soft_limit,
@@ -217,9 +233,13 @@ static long monitor_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
             if (entry->pid == req.pid) {
                 list_del(&entry->list);
                 kfree(entry);
+
                 mutex_unlock(&monitor_lock);
 
-                printk(KERN_INFO "[container_monitor] Unregistered PID=%d\n", req.pid);
+                printk(KERN_INFO
+                       "[container_monitor] UNREGISTER pid=%d\n",
+                       req.pid);
+
                 return 0;
             }
         }
@@ -272,7 +292,8 @@ static int __init monitor_init(void)
     }
 
     timer_setup(&monitor_timer, timer_callback, 0);
-    mod_timer(&monitor_timer, jiffies + msecs_to_jiffies(CHECK_INTERVAL_MS));
+    mod_timer(&monitor_timer,
+              jiffies + msecs_to_jiffies(CHECK_INTERVAL_MS));
 
     printk(KERN_INFO "[container_monitor] Module loaded\n");
     return 0;
@@ -308,4 +329,4 @@ module_init(monitor_init);
 module_exit(monitor_exit);
 
 MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION("Final container memory monitor");
+MODULE_DESCRIPTION("Container Memory Monitor (Task 4 Final)");
