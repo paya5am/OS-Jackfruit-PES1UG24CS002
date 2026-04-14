@@ -4,10 +4,10 @@
 
 ## **1. Team Information**
 
-* Aadhavan Muthusamy - SRN: PES1UG24CS002
-( **dev** in past commits -> **updated** to -> **paya5am** ( latest three commits ) )
+* Aadhavan Muthusamy - SRN: PES1UG24CS002<br>
+( **dev** in past commits -> **updated** to -> **paya5am** ( latest four commits ) )
  
-* Aakash Desai - SRN: PES1UG24CS006
+* Aakash Desai - SRN: PES1UG24CS006<br>
 ( **Aakash-Desai-0103** )
 ---
 
