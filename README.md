@@ -13,61 +13,78 @@
 
 ## **2. Build, Load, and Run Instructions**
 
-### 🔧 Build
+### Clone Repo
 
 ```bash
-make
+git clone https://github.com/paya5am/OS-Jackfruit-PES1UG24CS002
+cd OS-Jackfruit-PES1UG24CS002
+cd boilerplate
+```
+
+### Clean and Build
+
+```bash
+make clean
+make all module
 ```
 
 ---
 
-### 🔌 Load Kernel Module
+### Allocate Permissions and Load Monitor
 
 ```bash
+sudo rmmod monitor 2>/dev/null
 sudo insmod monitor.ko
+sudo chmod 666 /dev/container_monitor 
 ```
 
 ---
 
-### ✅ Verify Device
+### Copy Workloads Into Containers
 
 ```bash
-ls -l /dev/container_monitor
+cp memory_hog cpu_hog ../rootfs-alpha/
+cp cpu_hog ../rootfs-beta/
 ```
 
 ---
 
-### 🚀 Start Supervisor
+### Task1 : Multi container supervision; Start Supervisor ( Terminal 1 ) 
 
 ```bash
 sudo ./engine supervisor ./rootfs-base
 ```
 
+![ss1](Screenshots/AadhavansScreenshots/1_multicontainersupervisor)
+
 ---
 
-### 📁 Create Writable Root Filesystems
+### Test ( Terminal 2 ) 
 
 ```bash
-cp -a ./rootfs-base ./rootfs-alpha
-cp -a ./rootfs-base ./rootfs-beta
+sudo ./engine start bg-test ../rootfs-alpha "sleep 60"
+sudo ./engine run fg-test ../rootfs-beta "sleep 10"
 ```
 
 ---
 
-### ▶️ Start Containers
-
-```bash
-sudo ./engine start alpha ./rootfs-alpha /bin/sh --soft-mib 48 --hard-mib 80
-sudo ./engine start beta ./rootfs-beta /bin/sh --soft-mib 64 --hard-mib 96
-```
-
----
-
-### 📊 List Containers
+### Task2 : Metadata tracking; Check (in Terminal 3 ) 
 
 ```bash
 sudo ./engine ps
 ```
+
+![ss2](Screenshots/AadhavansScreenshots/2_ps)
+
+---
+
+### Task3: Bounded-buffer logging; Run in Terminal 2 
+
+```bash
+sudo ./engine start log-test ../rootfs-alpha "echo 'line1'; sleep 1; echo 'line2'"
+```
+
+3_boundedbufferlogging
 
 ---
 
