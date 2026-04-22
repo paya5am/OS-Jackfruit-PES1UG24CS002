@@ -55,7 +55,7 @@ cp cpu_hog ../rootfs-beta/
 sudo ./engine supervisor ./rootfs-base
 ```
 
-![ss1](Screenshots/AadhavansScreenshots/1_multicontainersupervisor)
+![ss1](Screenshots/AadhavansScreenshots/1_multicontainersupervisor/ss1.png)
 
 ---
 
@@ -74,123 +74,78 @@ sudo ./engine run fg-test ../rootfs-beta "sleep 10"
 sudo ./engine ps
 ```
 
-![ss2](Screenshots/AadhavansScreenshots/2_ps)
+![ss2](Screenshots/AadhavansScreenshots/2_ps/ss2.png)
 
 ---
 
 ### Task3: Bounded-buffer logging; Run in Terminal 2 
 
 ```bash
-sudo ./engine start log-test ../rootfs-alpha "echo 'line1'; sleep 1; echo 'line2'"
+sudo ./engine start cont1 ../rootfs-alpha "echo 'line1'; sleep 1; echo 'line2'"
+sleep 2
+cat cont1.log
 ```
 
-3_boundedbufferlogging
+![ss3](Screenshots/AadhavansScreenshots/3_boundedbufferlogging/ss3.png)
 
 ---
 
-### 📜 View Logs
+### Task4: CLI and IPC
 
 ```bash
-sudo ./engine logs alpha
+sudo ./engine start ipc ../rootfs-alpha "sleep 60"
 ```
+
+![ss4_1](Screenshots/AadhavansScreenshots/4_ipc/ss4_1.png)
+
+
+![ss4_2](Screenshots/AadhavansScreenshots/4_ipc/ss4_2.png)
 
 ---
 
-### 🧪 Run Workloads
+### Task5 and Task6: Soft-limit warning and Hard-limit enforcement
 
 ```bash
-cp cpu_hog ./rootfs-alpha/
-cp io_pulse ./rootfs-beta/
-cp memory_hog ./rootfs-alpha/
-
-sudo ./engine start cpu ./rootfs-alpha ./cpu_hog
-sudo ./engine start io ./rootfs-beta ./io_pulse
+sudo ./engine start mem-test ../rootfs-alpha "/memory_hog 150" --soft-mib 20 --hard-mib 50/
 ```
+
+```bash
+#wait 5 secs and run in another terminal
+sudo ./engine ps
+sudo dmesg | tail -n 10
+```
+
+![ss5](Screenshots/AadhavansScreenshots/5_softlimitwarning/ss5.png)
+
+
+![ss6](Screenshots/AadhavansScreenshots/6_hardlimitenforcement/ss6.png)
+
+
+### Task7: Scheduling experiment
+
+```bash
+sudo ./engine start cpu-high ../rootfs-alpha "/cpu_hog" --nice -10
+sudo ./engine start cpu-low ../rootfs-beta "/cpu_hog" --nice 19
+top
+```
+
+![ss7_1](Screenshots/AadhavansScreenshots/7_scheduling/ss7_1.png)
+
+
+![ss7_2](Screenshots/AadhavansScreenshots/7_scheduling/ss7_2.png)
 
 ---
 
-### 🛑 Stop Containers
+### Task8: Clean teardown
 
 ```bash
-sudo ./engine stop alpha
-sudo ./engine stop beta
-```
-
----
-
-### 📟 Inspect Kernel Logs
-
-```bash
-dmesg | tail
-```
-
----
-
-### ❌ Unload Module
-
-```bash
+#Ctrl+C in the supervisor terminal ( terminal 1 )
 sudo rmmod monitor
+sudo dmesg | tail -n 2
 ```
 
----
-
-## **3. Demo with Screenshots**
-
-### 1. Multi-container supervision
-
-![SS1](Screenshots/AakashsScreenshots/ss1_supervisor.png)
-*Multiple containers running under a single supervisor process.*
-
----
-
-### 2. Metadata tracking
-
-![SS2](Screenshots/AakashsScreenshots/ss2_ps.png)
-*Output of `engine ps` showing container metadata.*
-
----
-
-### 3. Bounded-buffer logging
-
-![SS3](Screenshots/AakashsScreenshots/ss3_logging.png)
-*Logs captured from multiple containers via pipes and written to log files.*
-
----
-
-### 4. CLI and IPC
-
-![SS4](Screenshots/AakashsScreenshots/ss4_cli.png)
-*CLI command issued and response received from supervisor demonstrating IPC.*
-
----
-
-### 5. Soft-limit warning
-
-![SS5](Screenshots/AakashsScreenshots/ss5_soft_limit.png)
-*Kernel log showing soft memory limit warning.(Followed by Hard-Limit Escalation)*
-
----
-
-### 6. Hard-limit enforcement
-
-![SS6](Screenshots/AakashsScreenshots/ss6_hard_limit.png)
-*Kernel log and metadata showing container killed after exceeding hard limit.*
-
----
-
-### 7. Scheduling experiment
-
-![SS7](Screenshots/AakashsScreenshots/ss7_scheduling.png)
-
-*CPU-bound vs I/O-bound workloads showing different CPU usage behavior.*
-
----
-
-### 8. Clean teardown
-
-![SS8](Screenshots/AakashsScreenshots/ss8_cleanup.png)
-
-*No zombie processes after shutdown.*
+![ss8_1](Screenshots/AadhavansScreenshots/8_teardown/ss8_1.png)
+![ss8_3](Screenshots/AadhavansScreenshots/8_teardown/ss8_3.png)
 
 ---
 
@@ -256,9 +211,9 @@ Memory enforcement is implemented in kernel space because only the kernel provid
 
 ### **5. Scheduling Behavior**
 
-We conducted experiments using CPU-bound and I/O-bound workloads.
+We conducted experiments using CPU-bound and Memory-bound workloads.
 
-CPU-bound processes consume CPU continuously, while I/O-bound processes frequently yield CPU. Observations show that I/O-bound processes remain responsive, and CPU-bound processes dominate CPU usage.
+CPU-bound processes consume CPU continuously, while Memory-bound processes frequently simulate memory allocation. Observations show that CPU-bound processes dominate CPU usage.
 
 This behavior aligns with the Completely Fair Scheduler (CFS), which prioritizes interactive (I/O-bound) processes by scheduling them quickly after wake-up while distributing CPU time proportionally among CPU-bound tasks.
 
@@ -307,7 +262,7 @@ This demonstrates:
 
 ### **5. Scheduling Experiments**
 
-* Choice: synthetic workloads (`cpu_hog`, `io_pulse`)
+* Choice: synthetic workloads (`cpu_hog`)
 * Tradeoff: may not reflect real-world workloads
 * Justification: provides controlled, predictable behavior for clear demonstration of scheduling principles
 
@@ -319,7 +274,7 @@ This demonstrates:
 
 Two containers were executed concurrently:
 - `cpu_hog` (CPU-bound workload)
-- `io_pulse` (I/O-bound workload)
+- `mem_hog` (Memory-bound workload)
 
 System behavior was observed using the `top` command.
 
@@ -327,13 +282,12 @@ System behavior was observed using the `top` command.
 
 ### Observed Output
 
-![Scheduling Experiment](Screenshots/AakashsScreenshots/ss7_scheduling.png)
+![schedulingexp](Screenshots/AadhavansScreenshots/7_scheduling/ss7_2.png)
 
 The following behavior was observed during execution:
 
-- `cpu_hog` consistently utilized nearly **100% CPU**
-- `io_pulse` showed **very low CPU usage (~0–1%)**
-- Both processes ran concurrently without starvation
+- `cpu_hog` consistently utilized nearly **99% CPU**
+- Due to lower nice value the cpu_hog was given priority over other executing processes
 
 ---
 
@@ -341,8 +295,8 @@ The following behavior was observed during execution:
 
 | Process  | Type       | CPU Usage |
 |----------|-----------|----------|
-| cpu_hog  | CPU-bound | ~100%     |
-| io_pulse | I/O-bound | ~0–1%     |
+| cpu_hog  | CPU-bound | ~99%     |
+| other processes |system | ~remaining%     |
 
 ---
 
